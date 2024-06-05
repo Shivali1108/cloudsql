@@ -1,43 +1,53 @@
-from flask import Flask, request, jsonify
-import sqlite3
+import logging
+import psycopg2
 
-app = Flask(__name__)
+# Configure logging
+logging.basicConfig(level=logging.INFO, format='%(asctime)s %(levelname)s %(message)s')
 
-# Connect to SQLite database (or create it if it doesn't exist)
 def connect_db():
-    conn = sqlite3.connect('data.db')
-    return conn
+    try:
+        conn = psycopg2.connect(
+            dbname="your_database_name",
+            user="your_username",
+            password="your_password",
+            host="your_host",
+            port="your_port"
+        )
+        return conn
+    except psycopg2.Error as e:
+        logging.error('Unable to connect to the database: %s', e)
+        raise
 
-# Initialize the database
 def init_db():
-    conn = connect_db()
-    with conn:
-        conn.execute('''
-            CREATE TABLE IF NOT EXISTS data (
-                id INTEGER PRIMARY KEY AUTOINCREMENT,
-                value1 TEXT NOT NULL,
-                value2 TEXT NOT NULL
-            )
-        ''')
-    conn.close()
+    try:
+        conn = connect_db()
+        with conn.cursor() as cur:
+            cur.execute('''
+                CREATE TABLE IF NOT EXISTS data (
+                    id SERIAL PRIMARY KEY,
+                    value1 TEXT NOT NULL,
+                    value2 TEXT NOT NULL
+                )
+            ''')
+        conn.commit()
+        logging.info('Database initialization successful')
+    except psycopg2.Error as e:
+        logging.error('Error initializing the database: %s', e)
+        raise
+    finally:
+        conn.close()
 
-@app.route('/submit', methods=['POST'])
-def submit_data():
-    data = request.json
-    value1 = data.get('value1')
-    value2 = data.get('value2')
+def insert_data(value1, value2):
+    try:
+        conn = connect_db()
+        with conn.cursor() as cur:
+            cur.execute('INSERT INTO data (value1, value2) VALUES (%s, %s)', (value1, value2))
+            conn.commit()
+            logging.info('Data inserted successfully: %s, %s', value1, value2)
+    except psycopg2.Error as e:
+        logging.error('Error inserting data into the database: %s', e)
+        raise
+    finally:
+        conn.close()
 
-    if not value1 or not value2:
-        return jsonify({'error': 'Both value1 and value2 are required'}), 400
-
-    conn = connect_db()
-    with conn:
-        conn.execute('INSERT INTO data (value1, value2) VALUES (?, ?)', (value1, value2))
-    conn.close()
-
-    return jsonify({'message': 'Data received successfully'})
-
-if __name__ == '__main__':
-    init_db()
-    app.run(debug=True)
 
